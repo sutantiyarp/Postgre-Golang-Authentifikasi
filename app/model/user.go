@@ -7,6 +7,7 @@ type User struct {
 	Username  string    `json:"username"`
 	Email     string    `json:"email"`
 	Password  string    `json:"password"`
+	AlumniID  int       `json:"alumni_id"`
 	RoleID    int       `json:"role_id"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -21,6 +22,7 @@ type UserRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	AlumniID int    `json:"alumni_id"`
 	RoleID   int    `json:"role_id"`
 }
 

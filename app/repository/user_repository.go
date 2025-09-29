@@ -24,10 +24,10 @@ func NewUserRepository(db *sql.DB) UserRepository {
 // Save untuk menyimpan user baru
 func (r *userRepository) Save(user model.User) (model.User, error) {
 	sqlStatement := `
-		INSERT INTO users (username, email, password, role_id, created_at) 
-		VALUES ($1, $2, $3, $4, $5) RETURNING id`
+		INSERT INTO users (username, email, password, alumni_id, role_id, created_at) 
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
 	var id int
-	err := r.db.QueryRow(sqlStatement, user.Username, user.Email, user.Password, user.RoleID, user.CreatedAt).Scan(&id)
+	err := r.db.QueryRow(sqlStatement, user.Username, user.Email, user.Password, user.AlumniID, user.RoleID, user.CreatedAt).Scan(&id)
 	if err != nil {
 		log.Println("Error inserting user:", err)
 		return model.User{}, err

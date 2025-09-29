@@ -18,6 +18,7 @@ type PekerjaanAlumni struct {
     DeskripsiPekerjaan string    `json:"deskripsi_pekerjaan"`
     CreatedAt         time.Time `json:"created_at"`
     UpdatedAt         time.Time `json:"updated_at"`
+    IsDelete    string `json:"is_delete"`
 }
 
 type CreatePekerjaanAlumniRequest struct {
@@ -31,6 +32,7 @@ type CreatePekerjaanAlumniRequest struct {
     TanggalSelesaiKerja string `json:"tanggal_selesai_kerja"`
     StatusPekerjaan  string `json:"status_pekerjaan"`
     DeskripsiPekerjaan string `json:"deskripsi_pekerjaan"`
+    IsDelete         string `json:"is_delete"`
 }
 
 type UpdatePekerjaanAlumniRequest struct {
@@ -43,4 +45,9 @@ type UpdatePekerjaanAlumniRequest struct {
     TanggalSelesaiKerja string `json:"tanggal_selesai_kerja"`
     StatusPekerjaan   string `json:"status_pekerjaan"`
     DeskripsiPekerjaan string `json:"deskripsi_pekerjaan"`
+    IsDelete          string `json:"is_delete"`
+}
+
+type UpdatePekerjaanAlumniSoftDelete struct {
+    IsDelete    string `json:"is_delete"`
 }

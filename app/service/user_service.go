@@ -3,13 +3,12 @@ package service
 import (
 	"hello-fiber/app/model"
 	"hello-fiber/app/repository"
+	"hello-fiber/middleware"
 	"log"
 	"time"
 	"golang.org/x/crypto/bcrypt"
 	"database/sql"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
-	// "hello-fiber/utils"
 )
 
 func RegisterService(c *fiber.Ctx, db *sql.DB) error {
@@ -31,6 +30,7 @@ func RegisterService(c *fiber.Ctx, db *sql.DB) error {
 		Username:  userRequest.Username,
 		Email:     userRequest.Email,
 		Password:  string(hashedPassword),
+		AlumniID:  userRequest.AlumniID,
 		RoleID:    userRequest.RoleID,
 		CreatedAt: time.Now(),
 	}
@@ -69,21 +69,22 @@ func LoginService(c *fiber.Ctx, db *sql.DB) error {
 		return c.Status(401).SendString("Invalid credentials")
 	}
 
-	// Membuat klaim token JWT
-	claims := jwt.MapClaims{
-		"sub": user.ID,  // ID pengguna
-		"exp": time.Now().Add(time.Hour * 24).Unix(),  // Waktu kadaluarsa token (1 hari)
-		"iat": time.Now().Unix(),  // Waktu pembuatan token
-		"role": user.RoleID,  // Peran pengguna
-	}
-
-	// Membuat token dengan klaim dan menandatangani menggunakan secret key
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte("your_jwt_secret"))
+	tokenString, err := middleware.GenerateJWT(user)
 	if err != nil {
 		return c.Status(500).SendString("Error generating token")
 	}
 
-	// Mengembalikan token ke client
-	return c.Status(200).JSON(fiber.Map{"token": tokenString})
+	response := model.LoginResponse{
+		Success: true,
+		Message: "Login successful",
+		Token:   tokenString,
+		User: model.User{
+			ID:       user.ID,
+			Username: user.Username,
+			Email:    user.Email,
+			RoleID:   user.RoleID,
+		},
+	}
+
+	return c.Status(200).JSON(response)
 }

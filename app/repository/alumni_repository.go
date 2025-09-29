@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"log"
 	"time"
+	"fmt"
 )
 
-// AlumniRepository interface untuk operasional alumni
 type AlumniRepository interface {
 	GetAll() ([]model.Alumni, error)
 	GetByID(id int) (model.Alumni, error)
@@ -20,12 +20,10 @@ type alumniRepository struct {
 	db *sql.DB
 }
 
-// NewAlumniRepository membuat instance baru AlumniRepository
 func NewAlumniRepository(db *sql.DB) AlumniRepository {
 	return &alumniRepository{db: db}
 }
 
-// GetAll untuk mengambil semua data alumni
 func (r *alumniRepository) GetAll() ([]model.Alumni, error) {
 	sqlStatement := `
 		SELECT id, nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at 
@@ -56,7 +54,6 @@ func (r *alumniRepository) GetAll() ([]model.Alumni, error) {
 	return alumniList, nil
 }
 
-// GetByID untuk mengambil data alumni berdasarkan ID
 func (r *alumniRepository) GetByID(id int) (model.Alumni, error) {
 	sqlStatement := `
 		SELECT id, nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at 
@@ -76,7 +73,6 @@ func (r *alumniRepository) GetByID(id int) (model.Alumni, error) {
 	return alumni, nil
 }
 
-// Create untuk menambah alumni baru
 func (r *alumniRepository) Create(req model.CreateAlumniRequest) (model.Alumni, error) {
 	sqlStatement := `
 		INSERT INTO alumni (nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at) 
@@ -94,8 +90,7 @@ func (r *alumniRepository) Create(req model.CreateAlumniRequest) (model.Alumni, 
 		log.Println("Error inserting alumni:", err)
 		return model.Alumni{}, err
 	}
-	
-	// Set the other fields
+
 	alumni.NIM = req.NIM
 	alumni.Nama = req.Nama
 	alumni.Jurusan = req.Jurusan
@@ -108,7 +103,6 @@ func (r *alumniRepository) Create(req model.CreateAlumniRequest) (model.Alumni, 
 	return alumni, nil
 }
 
-// Update untuk mengupdate data alumni
 func (r *alumniRepository) Update(id int, req model.UpdateAlumniRequest) (model.Alumni, error) {
 	sqlStatement := `
 		UPDATE alumni 
@@ -129,12 +123,10 @@ func (r *alumniRepository) Update(id int, req model.UpdateAlumniRequest) (model.
 	if rowsAffected == 0 {
 		return model.Alumni{}, sql.ErrNoRows
 	}
-	
-	// Get updated alumni
+
 	return r.GetByID(id)
 }
 
-// Delete untuk menghapus data alumni
 func (r *alumniRepository) Delete(id int) error {
 	sqlStatement := `DELETE FROM alumni WHERE id = $1`
 	result, err := r.db.Exec(sqlStatement, id)
@@ -149,4 +141,54 @@ func (r *alumniRepository) Delete(id int) error {
 	}
 	
 	return nil
+}
+
+func GetAlumniWithPagination(db *sql.DB, search, sortBy, order string, limit, offset int) ([]model.Alumni, error) {
+	validSortColumns := map[string]bool{
+		"id": true, "nim": true, "nama": true, "jurusan": true, 
+		"angkatan": true, "tahun_lulus": true, "email": true, "created_at": true,
+	}
+	if !validSortColumns[sortBy] {
+		sortBy = "id"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at
+		FROM alumni
+		WHERE nama ILIKE $1 OR nim ILIKE $1 OR jurusan ILIKE $1 OR email ILIKE $1
+		ORDER BY %s %s
+		LIMIT $2 OFFSET $3
+	`, sortBy, order)
+
+	rows, err := db.Query(query, "%"+search+"%", limit, offset)
+	if err != nil {
+		log.Println("Query error:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var alumni []model.Alumni
+	for rows.Next() {
+		var a model.Alumni
+		err := rows.Scan(
+			&a.ID, &a.NIM, &a.Nama, &a.Jurusan, &a.Angkatan, &a.TahunLulus,
+			&a.Email, &a.NoTelepon, &a.Alamat, &a.CreatedAt, &a.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		alumni = append(alumni, a)
+	}
+
+	return alumni, nil
+}
+
+func CountAlumni(db *sql.DB, search string) (int, error) {
+	var total int
+	countQuery := `SELECT COUNT(*) FROM alumni WHERE nama ILIKE $1 OR nim ILIKE $1 OR jurusan ILIKE $1 OR email ILIKE $1`
+	err := db.QueryRow(countQuery, "%"+search+"%").Scan(&total)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	return total, nil
 }
