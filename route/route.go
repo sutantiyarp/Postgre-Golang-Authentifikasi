@@ -63,4 +63,15 @@ protected := api.Group("/", middleware.JWTMiddleware())
 	pekerjaan.Delete("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
 		return service.DeletePekerjaanAlumniService(c, db)
 	})
+
+	trash := pekerjaan.Group("/trash", middleware.AdminOnlyMiddleware())
+	trash.Get("/", func(c *fiber.Ctx) error {
+		return service.GetPekerjaanAlumniTrashService(c, db)
+	})
+	trash.Post("/:id/restore", func(c *fiber.Ctx) error {
+		return service.RestorePekerjaanAlumniTrashService(c, db)
+	})
+	trash.Delete("/:id", func(c *fiber.Ctx) error {
+		return service.HardDeletePekerjaanAlumniTrashService(c, db)
+	})
 }

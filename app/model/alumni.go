@@ -19,6 +19,7 @@ type Alumni struct {
 }
 
 type CreateAlumniRequest struct {
+    UserID     int    `json:"user_id"` // Added user_id field for creating 
     NIM        string `json:"nim"`
     Nama       string `json:"nama"`
     Jurusan    string `json:"jurusan"`

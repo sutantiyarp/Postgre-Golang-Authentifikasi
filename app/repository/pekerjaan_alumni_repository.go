@@ -12,9 +12,12 @@ type PekerjaanAlumniRepository interface {
 	GetAll() ([]model.PekerjaanAlumni, error)
 	GetByID(id int) (model.PekerjaanAlumni, error)
 	GetByAlumniID(alumniID int) ([]model.PekerjaanAlumni, error)
+	GetByUserID(userID int) ([]model.PekerjaanAlumni, error)
 	Create(pekerjaan model.CreatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error)
 	Update(id int, pekerjaan model.UpdatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error)
 	Updatesementara(id int, pekerjaan model.UpdatePekerjaanAlumniSoftDelete) (model.PekerjaanAlumni, error)
+	UpdateDeleteStatusByUser(id, userID int, isDelete string) (model.PekerjaanAlumni, error)
+	UpdateDeleteStatus(id int, isDelete string) (model.PekerjaanAlumni, error)
 	Delete(id int) error
 	GetPekerjaanAlumniWithPagination(search, sortBy, order string, limit, offset int) ([]model.PekerjaanAlumni, error)
 	CountPekerjaanAlumni(search string) (int, error)
@@ -138,11 +141,55 @@ func (r *pekerjaanAlumniRepository) GetByAlumniID(alumniID int) ([]model.Pekerja
 	return pekerjaanList, nil
 }
 
+// GetByUserID untuk mengambil semua pekerjaan berdasarkan user ID melalui hubungan alumni
+func (r *pekerjaanAlumniRepository) GetByUserID(userID int) ([]model.PekerjaanAlumni, error) {
+	sqlStatement := `
+		SELECT p.id, p.alumni_id, p.nama_perusahaan, p.posisi_jabatan, p.bidang_industri, p.lokasi_kerja, 
+		       p.gaji_range, p.tanggal_mulai_kerja, p.tanggal_selesai_kerja, p.status_pekerjaan, 
+		       p.deskripsi_pekerjaan, p.is_delete, p.created_at, p.updated_at 
+		FROM pekerjaan_alumni p
+		INNER JOIN alumni a ON p.alumni_id = a.id
+		WHERE a.user_id = $1 
+		ORDER BY p.tanggal_mulai_kerja DESC`
+	
+	rows, err := r.db.Query(sqlStatement, userID)
+	if err != nil {
+		log.Println("Error querying pekerjaan alumni by user ID:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var pekerjaanList []model.PekerjaanAlumni
+	for rows.Next() {
+		var pekerjaan model.PekerjaanAlumni
+		var tanggalSelesai sql.NullString
+		
+		err := rows.Scan(
+			&pekerjaan.ID, &pekerjaan.AlumniID, &pekerjaan.NamaPerusahaan, &pekerjaan.PosisiJabatan,
+			&pekerjaan.BidangIndustri, &pekerjaan.LokasiKerja, &pekerjaan.GajiRange, 
+			&pekerjaan.TanggalMulaiKerja, &tanggalSelesai, &pekerjaan.StatusPekerjaan,
+			&pekerjaan.DeskripsiPekerjaan, &pekerjaan.IsDelete, &pekerjaan.CreatedAt, &pekerjaan.UpdatedAt,
+		)
+		if err != nil {
+			log.Println("Error scanning pekerjaan alumni:", err)
+			return nil, err
+		}
+		
+		if tanggalSelesai.Valid {
+			pekerjaan.TanggalSelesaiKerja = tanggalSelesai.String
+		}
+		
+		pekerjaanList = append(pekerjaanList, pekerjaan)
+	}
+	return pekerjaanList, nil
+}
+
+// Create untuk menambah pekerjaan alumni baru
 func (r *pekerjaanAlumniRepository) Create(req model.CreatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error) {
 	sqlStatement := `
 		INSERT INTO pekerjaan_alumni (alumni_id, nama_perusahaan, posisi_jabatan, bidang_industri, 
 		                             lokasi_kerja, gaji_range, tanggal_mulai_kerja, tanggal_selesai_kerja, 
-		                             status_pekerjaan, deskripsi_pekerjaan, created_at, updated_at, is_delete) 
+		                             status_pekerjaan, deskripsi_pekerjaan, is_delete, created_at, updated_at) 
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
 		RETURNING id, created_at, updated_at`
 	
@@ -159,7 +206,7 @@ func (r *pekerjaanAlumniRepository) Create(req model.CreatePekerjaanAlumniReques
 	err := r.db.QueryRow(
 		sqlStatement, req.AlumniID, req.NamaPerusahaan, req.PosisiJabatan, req.BidangIndustri,
 		req.LokasiKerja, req.GajiRange, req.TanggalMulaiKerja, tanggalSelesai,
-		req.StatusPekerjaan, req.DeskripsiPekerjaan, now, now, req.IsDelete,
+		req.StatusPekerjaan, req.DeskripsiPekerjaan, "tidak", now, now,
 	).Scan(&pekerjaan.ID, &pekerjaan.CreatedAt, &pekerjaan.UpdatedAt)
 	
 	if err != nil {
@@ -177,17 +224,18 @@ func (r *pekerjaanAlumniRepository) Create(req model.CreatePekerjaanAlumniReques
 	pekerjaan.TanggalSelesaiKerja = req.TanggalSelesaiKerja
 	pekerjaan.StatusPekerjaan = req.StatusPekerjaan
 	pekerjaan.DeskripsiPekerjaan = req.DeskripsiPekerjaan
-	pekerjaan.IsDelete = req.IsDelete
+	pekerjaan.IsDelete = "tidak"
 	
 	return pekerjaan, nil
 }
 
+// Update untuk mengupdate data pekerjaan alumni
 func (r *pekerjaanAlumniRepository) Update(id int, req model.UpdatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error) {
 	sqlStatement := `
 		UPDATE pekerjaan_alumni 
 		SET nama_perusahaan = $1, posisi_jabatan = $2, bidang_industri = $3, lokasi_kerja = $4, 
 		    gaji_range = $5, tanggal_mulai_kerja = $6, tanggal_selesai_kerja = $7, 
-		    status_pekerjaan = $8, deskripsi_pekerjaan = $9, updated_at = $10, is_delete = $11
+		    status_pekerjaan = $8, deskripsi_pekerjaan = $9, updated_at = $10 
 		WHERE id = $11`
 	
 	now := time.Now()
@@ -202,7 +250,7 @@ func (r *pekerjaanAlumniRepository) Update(id int, req model.UpdatePekerjaanAlum
 	result, err := r.db.Exec(
 		sqlStatement, req.NamaPerusahaan, req.PosisiJabatan, req.BidangIndustri, req.LokasiKerja,
 		req.GajiRange, req.TanggalMulaiKerja, tanggalSelesai, req.StatusPekerjaan,
-		req.DeskripsiPekerjaan, now, req.IsDelete, id,
+		req.DeskripsiPekerjaan, now, id,
 	)
 	if err != nil {
 		log.Println("Error updating pekerjaan alumni:", err)
@@ -245,6 +293,54 @@ func (r *pekerjaanAlumniRepository) Updatesementara(id int, req model.UpdatePeke
 		return model.PekerjaanAlumni{}, sql.ErrNoRows
 	}
 	
+	return r.GetByID(id)
+}
+
+// UpdateDeleteStatus untuk mengupdate status penghapusan pekerjaan alumni
+func (r *pekerjaanAlumniRepository) UpdateDeleteStatus(id int, isDelete string) (model.PekerjaanAlumni, error) {
+	sqlStatement := `
+		UPDATE pekerjaan_alumni 
+		SET is_delete = $1, updated_at = $2 
+		WHERE id = $3`
+	
+	now := time.Now()
+	
+	result, err := r.db.Exec(sqlStatement, isDelete, now, id)
+	if err != nil {
+		log.Println("Error updating delete status:", err)
+		return model.PekerjaanAlumni{}, err
+	}
+	
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return model.PekerjaanAlumni{}, sql.ErrNoRows
+	}
+	
+	// Get updated pekerjaan alumni
+	return r.GetByID(id)
+}
+
+// UpdateDeleteStatusByUser untuk mengupdate status penghapusan pekerjaan alumni hanya untuk catatan milik pengguna
+func (r *pekerjaanAlumniRepository) UpdateDeleteStatusByUser(id, userID int, isDelete string) (model.PekerjaanAlumni, error) {
+	sqlStatement := `
+		UPDATE pekerjaan_alumni 
+		SET is_delete = $1, updated_at = $2 
+		WHERE id = $3 AND alumni_id IN (SELECT id FROM alumni WHERE user_id = $4)`
+	
+	now := time.Now()
+	
+	result, err := r.db.Exec(sqlStatement, isDelete, now, id, userID)
+	if err != nil {
+		log.Println("Error updating delete status by user:", err)
+		return model.PekerjaanAlumni{}, err
+	}
+	
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return model.PekerjaanAlumni{}, sql.ErrNoRows
+	}
+	
+	// Get updated pekerjaan alumni
 	return r.GetByID(id)
 }
 
