@@ -20,7 +20,7 @@ func SetupRoutes(app *fiber.App, db *sql.DB) {
 		return service.LoginService(c, db)
 	})
 
-protected := api.Group("/", middleware.JWTMiddleware())
+	protected := api.Group("/", middleware.JWTMiddleware())
 
 	alumni := protected.Group("/alumni")
 	alumni.Get("/", func(c *fiber.Ctx) error {
@@ -44,11 +44,20 @@ protected := api.Group("/", middleware.JWTMiddleware())
 	pekerjaan.Get("/", func(c *fiber.Ctx) error {
 		return service.GetAllPekerjaanAlumniService(c, db)
 	})
-	pekerjaan.Get("/:id", func(c *fiber.Ctx) error {
-		return service.GetPekerjaanAlumniByIDService(c, db)
+	pekerjaan.Get("/trash", func(c *fiber.Ctx) error {
+		return service.GetTrashedPekerjaanAlumniService(c, db)
 	})
 	pekerjaan.Get("/alumni/:alumni_id", func(c *fiber.Ctx) error {
 		return service.GetPekerjaanAlumniByAlumniIDService(c, db)
+	})
+	pekerjaan.Get("/:id", func(c *fiber.Ctx) error {
+		return service.GetPekerjaanAlumniByIDService(c, db)
+	})
+	pekerjaan.Delete("/trash/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.HardDeleteTrashedPekerjaanAlumniService(c, db)
+	})
+	pekerjaan.Put("/trash/:id/restore", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.RestoreTrashedPekerjaanAlumniService(c, db)
 	})
 	
 	pekerjaan.Post("/", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
@@ -57,21 +66,13 @@ protected := api.Group("/", middleware.JWTMiddleware())
 	pekerjaan.Put("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
 		return service.UpdatePekerjaanAlumniService(c, db)
 	})
+	pekerjaan.Put("admin/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.UpdatePekerjaanAlumniAdmin(c, db)
+	})
 	pekerjaan.Put("users/:id", middleware.PekerjaanOwnerMiddleware(db), func(c *fiber.Ctx) error {
 		return service.UpdatePekerjaanAlumniSementara(c, db)
 	})
 	pekerjaan.Delete("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
 		return service.DeletePekerjaanAlumniService(c, db)
-	})
-
-	trash := pekerjaan.Group("/trash", middleware.AdminOnlyMiddleware())
-	trash.Get("/", func(c *fiber.Ctx) error {
-		return service.GetPekerjaanAlumniTrashService(c, db)
-	})
-	trash.Post("/:id/restore", func(c *fiber.Ctx) error {
-		return service.RestorePekerjaanAlumniTrashService(c, db)
-	})
-	trash.Delete("/:id", func(c *fiber.Ctx) error {
-		return service.HardDeletePekerjaanAlumniTrashService(c, db)
 	})
 }

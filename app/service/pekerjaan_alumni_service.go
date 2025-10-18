@@ -35,12 +35,12 @@ func GetAllPekerjaanAlumniWithPaginationService(c *fiber.Ctx, db *sql.DB) error 
 	pekerjaanRepo := repository.NewPekerjaanAlumniRepository(db)
 	pekerjaan, err := pekerjaanRepo.GetPekerjaanAlumniWithPagination(search, sortBy, order, limit, offset)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch pekerjaan alumni"})
+		return c.Status(500).JSON(fiber.Map{"error": "Gagal di ambil pekerjaan alumni dengan pagination by service"}) // Ganti pesan error sesuai kebutuhan
 	}
 
 	total, err := pekerjaanRepo.CountPekerjaanAlumni(search)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to count pekerjaan alumni"})
+		return c.Status(500).JSON(fiber.Map{"error": "Gagal menghitung pekerjaan alumni dengan pagination by service"}) // Ganti pesan error sesuai kebutuhan
 	}
 
 	// Buat response pakai model
@@ -71,7 +71,7 @@ func GetPekerjaanAlumniByIDService(c *fiber.Ctx, db *sql.DB) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "ID tidak valid",
+			"message": "ID tidak valid by service",
 		})
 	}
 
@@ -81,20 +81,70 @@ func GetPekerjaanAlumniByIDService(c *fiber.Ctx, db *sql.DB) error {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(fiber.Map{
 				"success": false,
-				"message": "Pekerjaan alumni tidak ditemukan",
+				"message": "Pekerjaan alumni ID tidak ditemukan by service",
 			})
 		}
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal mengambil data pekerjaan alumni",
+			"message": "Gagal mengambil data pekerjaan alumni ID by service",
 			"error":   err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Data pekerjaan alumni berhasil diambil",
+		"message": "Data pekerjaan alumni ID berhasil diambil by service",
 		"data":    pekerjaan,
+	})
+}
+
+// GetPekerjaanAlumniTrashByIDService untuk mengambil trash data pekerjaan alumni berdasarkan ID
+func GetPekerjaanAlumniTrashByIDService(c *fiber.Ctx, db *sql.DB) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"message": "ID tidak valid by service",
+		})
+	}
+
+	trashRepo := repository.NewPekerjaanAlumniRepository(db)
+	trash, err := trashRepo.GetTrashByID(id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(fiber.Map{
+				"success": false,
+				"message": "Trash pekerjaan alumni tidak ditemukan ID by service",
+			})
+		}
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"message": "Gagal mengambil data trash pekerjaan alumni ID by service",
+			"error":   err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Data trash pekerjaan alumni ID berhasil diambil by service",
+		"data":    trash,
+	})
+}
+
+func GetTrashedPekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
+	pekerjaanRepo := repository.NewPekerjaanAlumniRepository(db)
+	data, err := pekerjaanRepo.GetTrashed()
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"message": "Gagal mengambil data trash pekerjaan alumni by service",
+			"error":   err.Error(),
+		})
+	}
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Berhasil mengambil data trash pekerjaan alumni by service",
+		"data":    data,
 	})
 }
 
@@ -104,7 +154,7 @@ func GetPekerjaanAlumniByAlumniIDService(c *fiber.Ctx, db *sql.DB) error {
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Alumni ID tidak valid",
+			"message": "Alumni ID tidak valid by service",
 		})
 	}
 
@@ -113,14 +163,14 @@ func GetPekerjaanAlumniByAlumniIDService(c *fiber.Ctx, db *sql.DB) error {
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal mengambil data pekerjaan alumni",
+			"message": "Gagal mengambil data pekerjaan alumni dari alumni ID by service",
 			"error":   err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Data pekerjaan alumni berhasil diambil",
+		"message": "Data pekerjaan alumni berhasil diambil dari alumni ID by service",
 		"data":    pekerjaanList,
 	})
 }
@@ -131,7 +181,7 @@ func CreatePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Request body tidak valid",
+			"message": "Request body tidak valid by service",
 		})
 	}
 
@@ -140,7 +190,7 @@ func CreatePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 	   req.BidangIndustri == "" || req.LokasiKerja == "" || req.TanggalMulaiKerja == "" {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Alumni ID, nama perusahaan, posisi jabatan, bidang industri, lokasi kerja, dan tanggal mulai kerja harus diisi",
+			"message": "Alumni ID, nama perusahaan, posisi jabatan, bidang industri, lokasi kerja, dan tanggal mulai kerja harus diisi by service",
 		})
 	}
 
@@ -149,34 +199,33 @@ func CreatePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 		req.StatusPekerjaan = "aktif"
 	}
 
-	if req.IsDelete == "" {
-		req.IsDelete = "tidak"
-	}
+	// if req.IsDelete == "" {
+	// 	req.IsDelete = "tidak"
+	// }
 
 	pekerjaanRepo := repository.NewPekerjaanAlumniRepository(db)
 	pekerjaan, err := pekerjaanRepo.Create(req)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal menambah pekerjaan alumni",
+			"message": "Gagal menambah pekerjaan alumni baru by service",
 			"error":   err.Error(),
 		})
 	}
 
 	return c.Status(201).JSON(fiber.Map{
 		"success": true,
-		"message": "Pekerjaan alumni berhasil ditambahkan",
+		"message": "Pekerjaan alumni berhasil ditambahkan by service",
 		"data":    pekerjaan,
 	})
 }
 
-// UpdatePekerjaanAlumniService untuk mengupdate data pekerjaan alumni
 func UpdatePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "ID tidak valid",
+			"message": "ID tidak valid by service",
 		})
 	}
 
@@ -184,7 +233,7 @@ func UpdatePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Request body tidak valid",
+			"message": "Request body tidak valid by service",
 		})
 	}
 
@@ -193,7 +242,7 @@ func UpdatePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 	   req.BidangIndustri == "" || req.LokasiKerja == "" || req.TanggalMulaiKerja == "" {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Nama perusahaan, posisi jabatan, bidang industri, lokasi kerja, dan tanggal mulai kerja harus diisi",
+			"message": "Nama perusahaan, posisi jabatan, bidang industri, lokasi kerja, dan tanggal mulai kerja harus diisi by service",
 		})
 	}
 
@@ -203,30 +252,29 @@ func UpdatePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(fiber.Map{
 				"success": false,
-				"message": "Pekerjaan alumni tidak ditemukan",
+				"message": "Pekerjaan alumni tidak ditemukan by service",
 			})
 		}
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal mengupdate pekerjaan alumni",
+			"message": "Gagal mengupdate pekerjaan alumni by service",
 			"error":   err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Pekerjaan alumni berhasil diupdate",
+		"message": "Pekerjaan alumni berhasil diupdate by service",
 		"data":    pekerjaan,
 	})
 }
 
-// UpdatePekerjaanAlumniSementara untuk mengupdate data pekerjaan alumni
 func UpdatePekerjaanAlumniSementara(c *fiber.Ctx, db *sql.DB) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "ID tidak valid",
+			"message": "ID tidak valid by service",
 		})
 	}
 
@@ -234,7 +282,7 @@ func UpdatePekerjaanAlumniSementara(c *fiber.Ctx, db *sql.DB) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Request body tidak valid",
+			"message": "Request body tidak valid by service",
 		})
 	}
 
@@ -242,46 +290,39 @@ func UpdatePekerjaanAlumniSementara(c *fiber.Ctx, db *sql.DB) error {
 	if req.IsDelete == "" {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "is_delete harus diisi ('hapus' atau 'tidak')",
+			"message": "Tidak berhasil untuk update is deletenya dari user to user by service",
 		})
 	}
 
 	pekerjaanRepo := repository.NewPekerjaanAlumniRepository(db)
-	pekerjaan, err := pekerjaanRepo.Updatesementara(id, req)
+	trash, err := pekerjaanRepo.UpdateUser(id, req)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(fiber.Map{
 				"success": false,
-				"message": "Pekerjaan alumni tidak ditemukan",
+				"message": "Pekerjaan alumni tidak ditemukan by service",
 			})
 		}
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal mengupdate pekerjaan alumni",
+			"message": "Gagal mengupdate pekerjaan alumni by service",
 			"error":   err.Error(),
 		})
 	}
 
-	// Jika diset ke "hapus", tambahkan ke tabel trash (id parent = id pekerjaan_alumni)
-	if strings.EqualFold(req.IsDelete, "hapus") {
-		trashRepo := repository.NewPekerjaanAlumniTrashRepository(db)
-		_ = trashRepo.InsertIfNotExists(id)
-	}
-
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Pekerjaan alumni berhasil diupdate",
-		"data":    pekerjaan,
+		"message": "Pekerjaan alumni untuk is delete user to user berhasil diupdate by service",
+		"data":    trash,
 	})
 }
 
-// UpdateDeleteStatusService untuk mengupdate status penghapusan pekerjaan alumni
-func UpdateDeleteStatusService(c *fiber.Ctx, db *sql.DB) error {
+func UpdatePekerjaanAlumniAdmin(c *fiber.Ctx, db *sql.DB) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "ID tidak valid",
+			"message": "ID tidak valid by service",
 		})
 	}
 
@@ -289,68 +330,47 @@ func UpdateDeleteStatusService(c *fiber.Ctx, db *sql.DB) error {
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Request body tidak valid",
+			"message": "Request body tidak valid by service",
 		})
 	}
 
 	// Validasi input
-	if req.IsDelete != "tidak" && req.IsDelete != "hapus" {
+	if req.IsDelete == "" {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "Status is_delete harus 'tidak' atau 'hapus'",
+			"message": "Tidak berhasil untuk update is deletenya dari user to user by service",
 		})
 	}
 
-	// Get user info from JWT token
-	userID := c.Locals("user_id").(int)
-	roleID := c.Locals("role_id").(int)
-
 	pekerjaanRepo := repository.NewPekerjaanAlumniRepository(db)
-	
-	var pekerjaan model.PekerjaanAlumni
-	
-	// If admin, can update any record
-	if roleID == 1 {
-		pekerjaan, err = pekerjaanRepo.UpdateDeleteStatus(id, req.IsDelete)
-	} else {
-		// If user, can only update their own records
-		pekerjaan, err = pekerjaanRepo.UpdateDeleteStatusByUser(id, userID, req.IsDelete)
-	}
-
+	trash, err := pekerjaanRepo.UpdateAdmin(id, req)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(fiber.Map{
 				"success": false,
-				"message": "Pekerjaan alumni tidak ditemukan atau Anda tidak memiliki akses",
+				"message": "Pekerjaan alumni tidak ditemukan by service",
 			})
 		}
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal mengupdate status penghapusan",
+			"message": "Gagal mengupdate pekerjaan alumni by service",
 			"error":   err.Error(),
 		})
 	}
 
-	// Tambahkan ke trash jika status 'hapus'
-	if req.IsDelete == "hapus" {
-		trashRepo := repository.NewPekerjaanAlumniTrashRepository(db)
-		_ = trashRepo.InsertIfNotExists(pekerjaan.ID)
-	}
-
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Status penghapusan berhasil diupdate",
-		"data":    pekerjaan,
+		"message": "Pekerjaan alumni untuk is delete user to user berhasil diupdate by service",
+		"data":    trash,
 	})
 }
 
-// DeletePekerjaanAlumniService untuk menghapus data pekerjaan alumni
 func DeletePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
 		return c.Status(400).JSON(fiber.Map{
 			"success": false,
-			"message": "ID tidak valid",
+			"message": "ID tidak valid by service",
 		})
 	}
 
@@ -360,128 +380,80 @@ func DeletePekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(fiber.Map{
 				"success": false,
-				"message": "Pekerjaan alumni tidak ditemukan",
+				"message": "Pekerjaan alumni tidak ditemukan by service",
 			})
 		}
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal menghapus pekerjaan alumni",
+			"message": "Gagal menghapus pekerjaan alumni by service",
 			"error":   err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Pekerjaan alumni berhasil dihapus",
+		"message": "Pekerjaan alumni berhasil dihapus sementara by service",
 	})
 }
 
-// GetMyPekerjaanAlumniService untuk mengambil data pekerjaan alumni milik user yang sedang login
-func GetMyPekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
-	// Get user info from JWT token
-	userID := c.Locals("user_id").(int)
+// HardDeleteTrashedPekerjaanAlumniService untuk menghapus permanen trashed by id (admin only)
+func HardDeleteTrashedPekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"message": "ID tidak valid by service",
+		})
+	}
 
 	pekerjaanRepo := repository.NewPekerjaanAlumniRepository(db)
-	pekerjaanList, err := pekerjaanRepo.GetByUserID(userID)
-	if err != nil {
+	if err := pekerjaanRepo.HardDeleteIfTrashed(id); err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(fiber.Map{
+				"success": false,
+				"message": "Data tidak ditemukan atau tidak ada berstatus hapus by service",
+			})
+		}
 		return c.Status(500).JSON(fiber.Map{
 			"success": false,
-			"message": "Gagal mengambil data pekerjaan alumni",
+			"message": "Gagal menghapus permanen pekerjaan alumni by service",
 			"error":   err.Error(),
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"success": true,
-		"message": "Data pekerjaan alumni berhasil diambil",
-		"data":    pekerjaanList,
+		"message": "Berhasil menghapus permanen pekerjaan alumni by service",
 	})
 }
 
-// GetPekerjaanAlumniTrashService untuk mengambil data trash
-func GetPekerjaanAlumniTrashService(c *fiber.Ctx, db *sql.DB) error {
-	trashRepo := repository.NewPekerjaanAlumniTrashRepository(db)
-	list, err := trashRepo.List()
+// RestoreTrashedPekerjaanAlumniService untuk me-restore trashed by id (admin only)
+func RestoreTrashedPekerjaanAlumniService(c *fiber.Ctx, db *sql.DB) error {
+	id, err := strconv.Atoi(c.Params("id"))
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal mengambil data trash", "error": err.Error()})
+		return c.Status(400).JSON(fiber.Map{
+			"success": false,
+			"message": "ID tidak valid by service",
+		})
 	}
-	resp := model.PekerjaanAlumniTrashListResponse{Data: list}
-	return c.JSON(resp)
-}
-
-// RestorePekerjaanAlumniTrashService untuk merestore data dari trash
-func RestorePekerjaanAlumniTrashService(c *fiber.Ctx, db *sql.DB) error {
-	trashID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID trash tidak valid"})
-	}
-
-	trashRepo := repository.NewPekerjaanAlumniTrashRepository(db)
-	t, err := trashRepo.GetByTrashID(trashID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"success": false, "message": "Data trash tidak ditemukan"})
-		}
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal mengambil data trash", "error": err.Error()})
-	}
-
 	pekerjaanRepo := repository.NewPekerjaanAlumniRepository(db)
-	// Set is_delete menjadi 'tidak'
-	_, err = pekerjaanRepo.UpdateDeleteStatus(t.PekerjaanAlumniID, "tidak")
+	item, err := pekerjaanRepo.RestoreIfTrashed(id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"success": false, "message": "Pekerjaan alumni tidak ditemukan"})
+			return c.Status(404).JSON(fiber.Map{
+				"success": false,
+				"message": "Data tidak ditemukan atau tidak berstatus hapus by service",
+			})
 		}
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal merestore data", "error": err.Error()})
+		return c.Status(500).JSON(fiber.Map{
+			"success": false,
+			"message": "Gagal me-restore pekerjaan alumni dari trash by service",
+			"error":   err.Error(),
+		})
 	}
-
-	// Hapus dari trash
-	if err := trashRepo.DeleteByTrashID(trashID); err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal menghapus data dari trash", "error": err.Error()})
-	}
-
-	return c.JSON(fiber.Map{"success": true, "message": "Data berhasil direstore dan dihapus dari trash"})
-}
-
-// HardDeletePekerjaanAlumniTrashService untuk menghapus data secara hard dari trash
-func HardDeletePekerjaanAlumniTrashService(c *fiber.Ctx, db *sql.DB) error {
-	trashID, err := strconv.Atoi(c.Params("id"))
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID trash tidak valid"})
-	}
-
-	trashRepo := repository.NewPekerjaanAlumniTrashRepository(db)
-	t, err := trashRepo.GetByTrashID(trashID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return c.Status(404).JSON(fiber.Map{"success": false, "message": "Data trash tidak ditemukan"})
-		}
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal mengambil data trash", "error": err.Error()})
-	}
-
-	// Gunakan transaksi agar konsisten
-	tx, err := db.Begin()
-	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal memulai transaksi"})
-	}
-	commit := func() error { return tx.Commit() }
-	rollback := func() { _ = tx.Rollback() }
-
-	// Delete parent pekerjaan_alumni
-	if _, err := tx.Exec(`DELETE FROM pekerjaan_alumni WHERE id = $1`, t.PekerjaanAlumniID); err != nil {
-		rollback()
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal hard delete pekerjaan_alumni", "error": err.Error()})
-	}
-
-	// Delete dari trash
-	if _, err := tx.Exec(`DELETE FROM pekerjaan_alumni_trash WHERE id = $1`, trashID); err != nil {
-		rollback()
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal menghapus dari trash", "error": err.Error()})
-	}
-
-	if err := commit(); err != nil {
-		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal commit transaksi", "error": err.Error()})
-	}
-
-	return c.JSON(fiber.Map{"success": true, "message": "Data berhasil di-hard delete dan dihapus dari trash"})
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Berhasil me-restore pekerjaan alumni dari trash by service",
+		"data":    item,
+	})
 }
