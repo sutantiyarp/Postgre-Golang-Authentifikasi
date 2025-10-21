@@ -1,49 +1,85 @@
 package repository
 
 import (
+	"context"
+	"errors"
+	"time"
+
 	"hello-fiber/app/model"
-	"database/sql"
-	"log"
+	"hello-fiber/database"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"golang.org/x/crypto/bcrypt"
 )
 
-// UserRepository interface untuk operasional pengguna
-type UserRepository interface {
-	Save(user model.User) (model.User, error)
-	FindByEmail(email string) (model.User, error)
+type UserRepositoryMongo struct{}
+
+func NewUserRepositoryMongo() *UserRepositoryMongo {
+	return &UserRepositoryMongo{}
 }
 
-type userRepository struct {
-	db *sql.DB
-}
+func (r *UserRepositoryMongo) CreateUser(user model.User) (bson.ObjectID, error) {
+	collection := database.MongoDB.Collection("users")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-// NewUserRepository membuat instance baru UserRepository
-func NewUserRepository(db *sql.DB) UserRepository {
-	return &userRepository{db: db}
-}
-
-// Save untuk menyimpan user baru
-func (r *userRepository) Save(user model.User) (model.User, error) {
-	sqlStatement := `
-		INSERT INTO users (username, email, password, alumni_id, role_id, created_at) 
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`
-	var id int
-	err := r.db.QueryRow(sqlStatement, user.Username, user.Email, user.Password, user.AlumniID, user.RoleID, user.CreatedAt).Scan(&id)
+	// Hash password sebelum disimpan
+	hashed, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Println("Error inserting user:", err)
-		return model.User{}, err
+		return bson.ObjectID{}, err
 	}
-	user.ID = id
-	return user, nil
+
+	user.ID = bson.NewObjectID()
+	user.Password = string(hashed)
+	user.CreatedAt = time.Now()
+
+	// Cek jika AlumniID kosong, set ke nil
+	if user.AlumniID == nil {
+		// AlumniID di-set menjadi nil jika kosong
+		user.AlumniID = nil
+	}
+
+	result, err := collection.InsertOne(ctx, user)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return bson.ObjectID{}, errors.New("email sudah terdaftar")
+		}
+		return bson.ObjectID{}, err
+	}
+
+	return result.InsertedID.(bson.ObjectID), nil
 }
 
-// FindByEmail untuk mencari user berdasarkan email
-func (r *userRepository) FindByEmail(email string) (model.User, error) {
-	sqlStatement := `SELECT id, username, email, password, role_id, created_at FROM users WHERE email=$1`
+
+// GetUserByEmail mengambil user berdasarkan email (untuk login)
+func (r *UserRepositoryMongo) GetUserByEmail(email string) (*model.User, error) {
+	collection := database.MongoDB.Collection("users")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	var user model.User
-	err := r.db.QueryRow(sqlStatement, email).Scan(&user.ID, &user.Username, &user.Email, &user.Password, &user.RoleID, &user.CreatedAt)
-	if err != nil {
-		log.Println("Error finding user by email:", err)
-		return model.User{}, err
+	if err := collection.FindOne(ctx, bson.M{"email": email}).Decode(&user); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user tidak ditemukan")
+		}
+		return nil, err
 	}
-	return user, nil
+	return &user, nil
+}
+
+// GetUserByID mengambil user berdasarkan ID
+func (r *UserRepositoryMongo) GetUserByID(id bson.ObjectID) (*model.User, error) {
+	collection := database.MongoDB.Collection("users")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var user model.User
+	if err := collection.FindOne(ctx, bson.M{"_id": id}).Decode(&user); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, errors.New("user tidak ditemukan")
+		}
+		return nil, err
+	}
+	return &user, nil
 }

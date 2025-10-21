@@ -1,23 +1,29 @@
 package main
 
 import (
-	"hello-fiber/config"
-	"log"
-	// "os"
-	// "database/sql"
-	"github.com/joho/godotenv"
-	// "github.com/lib/pq"
+    "log"
+
+    "github.com/joho/godotenv"
+
+    "hello-fiber/config"
+    "hello-fiber/database"
 )
 
 func main() {
-	// Load .env file
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
-	}
+    // load .env
+    if err := godotenv.Load(); err != nil {
+        log.Println("Warning: .env not loaded:", err)
+    }
 
-	// Create and start the Fiber app
-	app := config.NewApp()
+    // NewApp will call ConnectMongoDB internally
+    app := config.NewApp()
 
-	// Start the server
-	log.Fatal(app.Listen(":3000"))
+    // disconnect saat program keluar (DisconnectMongoDB harus aman dipanggil jika belum terhubung)
+    defer func() {
+        if err := database.DisconnectMongoDB(); err != nil {
+            log.Println("Error disconnecting from MongoDB:", err)
+        }
+    }()
+
+    log.Fatal(app.Listen(":3000"))
 }

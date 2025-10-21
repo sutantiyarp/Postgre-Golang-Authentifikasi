@@ -1,433 +1,221 @@
 package repository
 
 import (
-	"hello-fiber/app/model"
-	"database/sql"
-	"fmt"
-	"log"
+	"context"
+	"errors"
 	"time"
+
+	"hello-fiber/app/model"
+	"hello-fiber/database"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-type PekerjaanAlumniRepository interface {
-	GetAll() ([]model.PekerjaanAlumni, error)
-	GetByID(id int) (model.PekerjaanAlumni, error)
-	GetTrashByID(id int) (model.Trash, error)
-	GetByAlumniID(alumniID int) ([]model.PekerjaanAlumni, error)
-	GetPekerjaanAlumniWithPagination(search, sortBy, order string, limit, offset int) ([]model.PekerjaanAlumni, error)
-	Create(pekerjaan model.CreatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error)
-	Update(id int, pekerjaan model.UpdatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error)
-	UpdateUser(id int, pekerjaan model.UpdatePekerjaanAlumniSoftDelete) (model.Trash, error)
-	UpdateAdmin(id int, pekerjaan model.UpdatePekerjaanAlumniSoftDelete) (model.Trash, error)
-	Delete(id int) error
-	CountPekerjaanAlumni(search string) (int, error)
-	GetTrashed() ([]model.Trash, error)
-	HardDeleteIfTrashed(id int) error
-	RestoreIfTrashed(id int) (model.Trash, error)
+type PekerjaanAlumniRepositoryMongo struct{}
+
+func NewPekerjaanAlumniRepositoryMongo() *PekerjaanAlumniRepositoryMongo {
+	return &PekerjaanAlumniRepositoryMongo{}
 }
 
-type pekerjaanAlumniRepository struct {
-	db *sql.DB
-}
+// CreatePekerjaanAlumni membuat pekerjaan alumni baru dan mengembalikan ID (bson.ObjectID)
+func (r *PekerjaanAlumniRepositoryMongo) CreatePekerjaanAlumni(pekerjaan model.PekerjaanAlumni) (bson.ObjectID, error) {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func NewPekerjaanAlumniRepository(db *sql.DB) PekerjaanAlumniRepository {
-	return &pekerjaanAlumniRepository{db: db}
-}
+	doc := bson.M{
+		"alumni_id":             pekerjaan.AlumniID,
+		"nama_perusahaan":       pekerjaan.NamaPerusahaan,
+		"posisi_jabatan":        pekerjaan.PosisiJabatan,
+		"bidang_industri":       pekerjaan.BidangIndustri,
+		"lokasi_kerja":          pekerjaan.LokasiKerja,
+		"gaji_range":            pekerjaan.GajiRange,
+		"tanggal_mulai_kerja":   pekerjaan.TanggalMulaiKerja,
+		"tanggal_selesai_kerja": pekerjaan.TanggalSelesaiKerja,
+		"status_pekerjaan":      pekerjaan.StatusPekerjaan,
+		"deskripsi_pekerjaan":   pekerjaan.DeskripsiPekerjaan,
+		"is_delete":             "tidak",
+		"created_at":            time.Now(),
+		"updated_at":            time.Now(),
+	}
 
-func (r *pekerjaanAlumniRepository) GetAll() ([]model.PekerjaanAlumni, error) {
-	sqlStatement := `SELECT id, alumni_id, nama_perusahaan, posisi_jabatan, bidang_industri, lokasi_kerja, 
-		       gaji_range, tanggal_mulai_kerja, tanggal_selesai_kerja, status_pekerjaan, 
-		       deskripsi_pekerjaan, created_at, updated_at
-		FROM pekerjaan_alumni 
-		ORDER BY created_at DESC`
-	
-	rows, err := r.db.Query(sqlStatement)
+	res, err := collection.InsertOne(ctx, doc)
 	if err != nil {
-		log.Println("Error men-query pekerjaan alumni:", err)
+		return bson.ObjectID{}, err
+	}
+
+	insertedID, ok := res.InsertedID.(bson.ObjectID)
+	if !ok {
+		return bson.ObjectID{}, errors.New("failed to get inserted ID")
+	}
+	return insertedID, nil
+}
+
+// GetAllPekerjaanAlumni mengambil semua pekerjaan alumni yang belum dihapus
+func (r *PekerjaanAlumniRepositoryMongo) GetAllPekerjaanAlumni() ([]model.PekerjaanAlumni, error) {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := collection.Find(ctx, bson.M{"is_delete": "tidak"})
+	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
-	var pekerjaanList []model.PekerjaanAlumni
-	for rows.Next() {
-		var pekerjaan model.PekerjaanAlumni
-		var tanggalSelesai sql.NullString
-		
-		err := rows.Scan(
-			&pekerjaan.ID, &pekerjaan.AlumniID, &pekerjaan.NamaPerusahaan, &pekerjaan.PosisiJabatan,
-			&pekerjaan.BidangIndustri, &pekerjaan.LokasiKerja, &pekerjaan.GajiRange, 
-			&pekerjaan.TanggalMulaiKerja, &tanggalSelesai, &pekerjaan.StatusPekerjaan,
-			&pekerjaan.DeskripsiPekerjaan, &pekerjaan.CreatedAt, &pekerjaan.UpdatedAt,
-		)
-		if err != nil {
-			log.Println("Error men-scan pekerjaan alumni:", err)
-			return nil, err
-		}
-		
-		if tanggalSelesai.Valid {
-			pekerjaan.TanggalSelesaiKerja = tanggalSelesai.String
-		}
-		
-		pekerjaanList = append(pekerjaanList, pekerjaan)
+	var pekerjaan []model.PekerjaanAlumni
+	if err = cursor.All(ctx, &pekerjaan); err != nil {
+		return nil, err
 	}
-	return pekerjaanList, nil
-}
 
-func (r *pekerjaanAlumniRepository) GetByID(id int) (model.PekerjaanAlumni, error) {
-	sqlStatement := `SELECT id, alumni_id, nama_perusahaan, posisi_jabatan, bidang_industri, lokasi_kerja, 
-		       gaji_range, tanggal_mulai_kerja, tanggal_selesai_kerja, status_pekerjaan, 
-		       deskripsi_pekerjaan, created_at, updated_at
-		FROM pekerjaan_alumni 
-		WHERE id = $1`
-	
-	var pekerjaan model.PekerjaanAlumni
-	var tanggalSelesai sql.NullString
-	
-	err := r.db.QueryRow(sqlStatement, id).Scan(
-		&pekerjaan.ID, &pekerjaan.AlumniID, &pekerjaan.NamaPerusahaan, &pekerjaan.PosisiJabatan,
-		&pekerjaan.BidangIndustri, &pekerjaan.LokasiKerja, &pekerjaan.GajiRange, 
-		&pekerjaan.TanggalMulaiKerja, &tanggalSelesai, &pekerjaan.StatusPekerjaan,
-		&pekerjaan.DeskripsiPekerjaan, &pekerjaan.CreatedAt, &pekerjaan.UpdatedAt,
-	)
-	if err != nil {
-		log.Println("Error menemukan pekerjaan alumni by ID:", err)
-		return model.PekerjaanAlumni{}, err
-	}
-	
-	if tanggalSelesai.Valid {
-		pekerjaan.TanggalSelesaiKerja = tanggalSelesai.String
-	}
-	
 	return pekerjaan, nil
 }
 
+// GetPekerjaanAlumniByID mengambil pekerjaan alumni berdasarkan ID (bson.ObjectID)
+func (r *PekerjaanAlumniRepositoryMongo) GetPekerjaanAlumniByID(id bson.ObjectID) (*model.PekerjaanAlumni, error) {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func (r *pekerjaanAlumniRepository) GetTrashByID(id int) (model.Trash, error) {
-	sqlStatement := `SELECT id, alumni_id, is_delete 
-		FROM pekerjaan_alumni 
-		WHERE id = $1 AND is_delete = 'hapus'`
-	
-	var trash model.Trash
-	
-	err := r.db.QueryRow(sqlStatement, id).Scan(
-		&trash.ID, &trash.AlumniID, &trash.IsDelete,
-	)
-	if err != nil {
-		log.Println("Error menemukan pekerjaan alumni by ID:", err)
-		return model.Trash{}, err
-	}
-	
-	return trash, nil
-}
-
-func (r *pekerjaanAlumniRepository) GetByAlumniID(alumniID int) ([]model.PekerjaanAlumni, error) {
-	sqlStatement := `SELECT id, alumni_id, nama_perusahaan, posisi_jabatan, bidang_industri, lokasi_kerja, 
-		       gaji_range, tanggal_mulai_kerja, tanggal_selesai_kerja, status_pekerjaan, 
-		       deskripsi_pekerjaan, created_at, updated_at
-		FROM pekerjaan_alumni 
-		WHERE alumni_id = $1 
-		ORDER BY tanggal_mulai_kerja DESC`
-	
-	rows, err := r.db.Query(sqlStatement, alumniID)
-	if err != nil {
-		log.Println("Error men-query pekerjaan alumni by alumni ID:", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var pekerjaanList []model.PekerjaanAlumni
-	for rows.Next() {
-		var pekerjaan model.PekerjaanAlumni
-		var tanggalSelesai sql.NullString
-		
-		err := rows.Scan(
-			&pekerjaan.ID, &pekerjaan.AlumniID, &pekerjaan.NamaPerusahaan, &pekerjaan.PosisiJabatan,
-			&pekerjaan.BidangIndustri, &pekerjaan.LokasiKerja, &pekerjaan.GajiRange, 
-			&pekerjaan.TanggalMulaiKerja, &tanggalSelesai, &pekerjaan.StatusPekerjaan,
-			&pekerjaan.DeskripsiPekerjaan, &pekerjaan.CreatedAt, &pekerjaan.UpdatedAt,
-		)
-		if err != nil {
-			log.Println("Error men-scan pekerjaan alumni:", err)
-			return nil, err
-		}
-		
-		if tanggalSelesai.Valid {
-			pekerjaan.TanggalSelesaiKerja = tanggalSelesai.String
-		}
-		
-		pekerjaanList = append(pekerjaanList, pekerjaan)
-	}
-	return pekerjaanList, nil
-}
-
-
-func (r *pekerjaanAlumniRepository) GetPekerjaanAlumniWithPagination(search, sortBy, order string, limit, offset int) ([]model.PekerjaanAlumni, error) {
-	validSortColumns := map[string]bool{
-		"id": true, "nama_perusahaan": true, "posisi_jabatan": true, "bidang_industri": true,
-		"lokasi_kerja": true, "tanggal_mulai_kerja": true, "status_pekerjaan": true, "created_at": true,
-	}
-	if !validSortColumns[sortBy] {
-		sortBy = "id"
-	}
-
-	query := fmt.Sprintf(`SELECT id, alumni_id, nama_perusahaan, posisi_jabatan, bidang_industri, lokasi_kerja, 
-		       gaji_range, tanggal_mulai_kerja, tanggal_selesai_kerja, status_pekerjaan, 
-		       deskripsi_pekerjaan, created_at, updated_at
-		FROM pekerjaan_alumni
-		WHERE nama_perusahaan ILIKE $1 OR posisi_jabatan ILIKE $1 OR bidang_industri ILIKE $1 OR lokasi_kerja ILIKE $1
-		ORDER BY %s %s
-		LIMIT $2 OFFSET $3
-	`, sortBy, order)
-
-	rows, err := r.db.Query(query, "%"+search+"%", limit, offset)
-	if err != nil {
-		log.Println("Query error:", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var pekerjaanList []model.PekerjaanAlumni
-	for rows.Next() {
-		var pekerjaan model.PekerjaanAlumni
-		var tanggalSelesai sql.NullString
-		
-		err := rows.Scan(
-			&pekerjaan.ID, &pekerjaan.AlumniID, &pekerjaan.NamaPerusahaan, &pekerjaan.PosisiJabatan,
-			&pekerjaan.BidangIndustri, &pekerjaan.LokasiKerja, &pekerjaan.GajiRange, 
-			&pekerjaan.TanggalMulaiKerja, &tanggalSelesai, &pekerjaan.StatusPekerjaan,
-			&pekerjaan.DeskripsiPekerjaan, &pekerjaan.CreatedAt, &pekerjaan.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		
-		if tanggalSelesai.Valid {
-			pekerjaan.TanggalSelesaiKerja = tanggalSelesai.String
-		}
-		
-		pekerjaanList = append(pekerjaanList, pekerjaan)
-	}
-
-	return pekerjaanList, nil
-}
-
-func (r *pekerjaanAlumniRepository) GetTrashed() ([]model.Trash, error) {
-	sqlStatement := `SELECT id, alumni_id, is_delete, updated_at 
-		FROM pekerjaan_alumni 
-		WHERE is_delete = 'hapus'
-		ORDER BY updated_at DESC`
-
-	rows, err := r.db.Query(sqlStatement)
-	if err != nil {
-		log.Println("Error memanggil trash pekerjaan_alumni:", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var pekerjaanList []model.Trash
-	for rows.Next() {
-		var trash model.Trash
-		if err := rows.Scan(
-			&trash.ID, &trash.AlumniID, &trash.IsDelete, &trash.UpdatedAt,
-		); err != nil {
-			log.Println("Error men-scan trash pekerjaan_alumni:", err)
-			return nil, err
-		}
-		pekerjaanList = append(pekerjaanList, trash)
-	}
-	return pekerjaanList, nil
-}
-
-func (r *pekerjaanAlumniRepository) Create(req model.CreatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error) {
-	sqlStatement := `INSERT INTO pekerjaan_alumni (alumni_id, nama_perusahaan, posisi_jabatan, bidang_industri, 
-		                             lokasi_kerja, gaji_range, tanggal_mulai_kerja, tanggal_selesai_kerja, 
-		                             status_pekerjaan, deskripsi_pekerjaan, created_at, updated_at) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
-		RETURNING id, created_at, updated_at`
-	
 	var pekerjaan model.PekerjaanAlumni
-	now := time.Now()
-	
-	var tanggalSelesai interface{}
-	if req.TanggalSelesaiKerja != "" {
-		tanggalSelesai = req.TanggalSelesaiKerja
-	} else {
-		tanggalSelesai = nil
-	}
-	
-	err := r.db.QueryRow(
-		sqlStatement, req.AlumniID, req.NamaPerusahaan, req.PosisiJabatan, req.BidangIndustri,
-		req.LokasiKerja, req.GajiRange, req.TanggalMulaiKerja, tanggalSelesai,
-		req.StatusPekerjaan, req.DeskripsiPekerjaan, now, now,
-	).Scan(&pekerjaan.ID, &pekerjaan.CreatedAt, &pekerjaan.UpdatedAt)
-	
-	if err != nil {
-		log.Println("Error inserting pekerjaan alumni:", err)
-		return model.PekerjaanAlumni{}, err
+	if err := collection.FindOne(ctx, bson.M{"_id": id, "is_delete": "tidak"}).Decode(&pekerjaan); err != nil {
+		return nil, err
 	}
 
-	pekerjaan.AlumniID = req.AlumniID
-	pekerjaan.NamaPerusahaan = req.NamaPerusahaan
-	pekerjaan.PosisiJabatan = req.PosisiJabatan
-	pekerjaan.BidangIndustri = req.BidangIndustri
-	pekerjaan.LokasiKerja = req.LokasiKerja
-	pekerjaan.GajiRange = req.GajiRange
-	pekerjaan.TanggalMulaiKerja = req.TanggalMulaiKerja
-	pekerjaan.TanggalSelesaiKerja = req.TanggalSelesaiKerja
-	pekerjaan.StatusPekerjaan = req.StatusPekerjaan
-	pekerjaan.DeskripsiPekerjaan = req.DeskripsiPekerjaan
-	// pekerjaan.IsDelete = req.IsDelete
-	
+	return &pekerjaan, nil
+}
+
+// GetPekerjaanAlumniByAlumniID mengambil pekerjaan berdasarkan alumni_id (bson.ObjectID)
+func (r *PekerjaanAlumniRepositoryMongo) GetPekerjaanAlumniByAlumniID(alumniID bson.ObjectID) ([]model.PekerjaanAlumni, error) {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := collection.Find(ctx, bson.M{"alumni_id": alumniID, "is_delete": "tidak"})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	var pekerjaan []model.PekerjaanAlumni
+	if err = cursor.All(ctx, &pekerjaan); err != nil {
+		return nil, err
+	}
+
 	return pekerjaan, nil
 }
 
-func (r *pekerjaanAlumniRepository) Update(id int, req model.UpdatePekerjaanAlumniRequest) (model.PekerjaanAlumni, error) {
-	sqlStatement := `UPDATE pekerjaan_alumni 
-		SET nama_perusahaan = $1, posisi_jabatan = $2, bidang_industri = $3, lokasi_kerja = $4, 
-		    gaji_range = $5, tanggal_mulai_kerja = $6, tanggal_selesai_kerja = $7, 
-		    status_pekerjaan = $8, deskripsi_pekerjaan = $9, updated_at = $10
-		WHERE id = $11`
-	
-	now := time.Now()
-	
-	var tanggalSelesai interface{}
-	if req.TanggalSelesaiKerja != "" {
-		tanggalSelesai = req.TanggalSelesaiKerja
-	} else {
-		tanggalSelesai = nil
-	}
-	
-	result, err := r.db.Exec(
-		sqlStatement, req.NamaPerusahaan, req.PosisiJabatan, req.BidangIndustri, req.LokasiKerja,
-		req.GajiRange, req.TanggalMulaiKerja, tanggalSelesai, req.StatusPekerjaan,
-		req.DeskripsiPekerjaan, now, id,
-	)
-	if err != nil {
-		log.Println("Error updating pekerjaan alumni:", err)
-		return model.PekerjaanAlumni{}, err
-	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return model.PekerjaanAlumni{}, sql.ErrNoRows
-	}
-	
-	return r.GetByID(id)
-}
+// UpdatePekerjaanAlumni mengupdate pekerjaan alumni berdasarkan ID (bson.ObjectID)
+func (r *PekerjaanAlumniRepositoryMongo) UpdatePekerjaanAlumni(id bson.ObjectID, pekerjaan model.PekerjaanAlumni) error {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func (r *pekerjaanAlumniRepository) UpdateUser(id int, req model.UpdatePekerjaanAlumniSoftDelete) (model.Trash, error) {
-	sqlStatement := `UPDATE pekerjaan_alumni 
-		SET is_delete = $1, updated_at = $2
-		WHERE id = $3`
-	
-	now := time.Now()
-	
-	result, err := r.db.Exec(
-		sqlStatement, req.IsDelete, now, id,
-	)
-	if err != nil {
-		log.Println("Error memperbarui pekerjaan alumni user to user:", err)
-		return model.Trash{}, err
+	update := bson.M{
+		"$set": bson.M{
+			"nama_perusahaan":       pekerjaan.NamaPerusahaan,
+			"posisi_jabatan":        pekerjaan.PosisiJabatan,
+			"bidang_industri":       pekerjaan.BidangIndustri,
+			"lokasi_kerja":          pekerjaan.LokasiKerja,
+			"gaji_range":            pekerjaan.GajiRange,
+			"tanggal_mulai_kerja":   pekerjaan.TanggalMulaiKerja,
+			"tanggal_selesai_kerja": pekerjaan.TanggalSelesaiKerja,
+			"status_pekerjaan":      pekerjaan.StatusPekerjaan,
+			"deskripsi_pekerjaan":   pekerjaan.DeskripsiPekerjaan,
+			"updated_at":            time.Now(),
+		},
 	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return model.Trash{}, sql.ErrNoRows
-	}
-	
-	return r.GetTrashByID(id)
-}
 
-func (r *pekerjaanAlumniRepository) UpdateAdmin(id int, req model.UpdatePekerjaanAlumniSoftDelete) (model.Trash, error) {
-	sqlStatement := `UPDATE pekerjaan_alumni 
-		SET is_delete = $1, updated_at = $2
-		WHERE id = $3`
-	
-	now := time.Now()
-	
-	result, err := r.db.Exec(
-		sqlStatement, req.IsDelete, now, id,
-	)
+	res, err := collection.UpdateOne(ctx, bson.M{"_id": id, "is_delete": "tidak"}, update)
 	if err != nil {
-		log.Println("Error memperbarui pekerjaan alumni admin to user:", err)
-		return model.Trash{}, err
-	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return model.Trash{}, sql.ErrNoRows
-	}
-	
-	return r.GetTrashByID(id)
-}
-
-func (r *pekerjaanAlumniRepository) Delete(id int) error {
-	sqlStatement := `UPDATE pekerjaan_alumni SET is_delete = 'hapus' WHERE id = $1`
-	result, err := r.db.Exec(sqlStatement, id)
-	if err != nil {
-		log.Println("Error menghapus pekerjaan alumni:", err)
 		return err
 	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return sql.ErrNoRows
-	}
-	
-	return nil
-}
-
-func (r *pekerjaanAlumniRepository) CountPekerjaanAlumni(search string) (int, error) {
-	var total int
-	countQuery := `SELECT COUNT(*) FROM pekerjaan_alumni WHERE nama_perusahaan ILIKE $1 OR posisi_jabatan ILIKE $1 OR bidang_industri ILIKE $1 OR lokasi_kerja ILIKE $1`
-	err := r.db.QueryRow(countQuery, "%"+search+"%").Scan(&total)
-	if err != nil && err != sql.ErrNoRows {
-		return 0, err
-	}
-	return total, nil
-}
-
-func (r *pekerjaanAlumniRepository) HardDeleteIfTrashed(id int) error {
-	sqlStatement := `DELETE FROM pekerjaan_alumni WHERE id = $1 AND is_delete = 'hapus'`
-	result, err := r.db.Exec(sqlStatement, id)
-	if err != nil {
-		log.Println("Error hard deleting pekerjaan_alumni:", err)
-		return err
-	}
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return sql.ErrNoRows
+	if res.MatchedCount == 0 {
+		return errors.New("pekerjaan alumni not found")
 	}
 	return nil
 }
 
-func (r *pekerjaanAlumniRepository) RestoreIfTrashed(id int) (model.Trash, error) {
-	sqlStatement := `UPDATE pekerjaan_alumni
-		SET is_delete = 'tidak', updated_at = $2
-		WHERE id = $1 AND is_delete = 'hapus'`
-	now := time.Now()
+// SoftDeletePekerjaanAlumni soft delete pekerjaan alumni (set is_delete)
+func (r *PekerjaanAlumniRepositoryMongo) SoftDeletePekerjaanAlumni(id bson.ObjectID, isDelete string) error {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	result, err := r.db.Exec(sqlStatement, id, now)
+	update := bson.M{
+		"$set": bson.M{
+			"is_delete":  isDelete,
+			"updated_at": time.Now(),
+		},
+	}
+
+	res, err := collection.UpdateOne(ctx, bson.M{"_id": id}, update)
 	if err != nil {
-		log.Println("Error untuk mengembalikan pekerjaan_alumni:", err)
-		return model.Trash{}, err
+		return err
 	}
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return model.Trash{}, sql.ErrNoRows
+	if res.MatchedCount == 0 {
+		return errors.New("pekerjaan alumni not found")
 	}
-	
-	sqlSelect := `SELECT id, alumni_id, is_delete, updated_at 
-		FROM pekerjaan_alumni 
-		WHERE id = $1`
-	
-	var trash model.Trash
-	err = r.db.QueryRow(sqlSelect, id).Scan(
-		&trash.ID, &trash.AlumniID, &trash.IsDelete, &trash.UpdatedAt,
-	)
+	return nil
+}
+
+// GetTrashedPekerjaanAlumni mengambil semua pekerjaan yang di-trash
+func (r *PekerjaanAlumniRepositoryMongo) GetTrashedPekerjaanAlumni() ([]model.Trash, error) {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := collection.Find(ctx, bson.M{"is_delete": "hapus"})
 	if err != nil {
-		log.Println("Error mengambil restored pekerjaan_alumni:", err)
-		return model.Trash{}, err
+		return nil, err
 	}
-	
+	defer cursor.Close(ctx)
+
+	var trash []model.Trash
+	if err = cursor.All(ctx, &trash); err != nil {
+		return nil, err
+	}
+
 	return trash, nil
+}
+
+// HardDeleteTrashedPekerjaanAlumni hard delete pekerjaan yang di-trash
+func (r *PekerjaanAlumniRepositoryMongo) HardDeleteTrashedPekerjaanAlumni(id bson.ObjectID) (*model.PekerjaanAlumni, error) {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var pekerjaan model.PekerjaanAlumni
+	if err := collection.FindOne(ctx, bson.M{"_id": id, "is_delete": "hapus"}).Decode(&pekerjaan); err != nil {
+		return nil, err
+	}
+
+	_, err := collection.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return nil, err
+	}
+
+	return &pekerjaan, nil
+}
+
+// RestoreTrashedPekerjaanAlumni restore pekerjaan dari trash dan kembalikan dokumen terbaru
+func (r *PekerjaanAlumniRepositoryMongo) RestoreTrashedPekerjaanAlumni(id bson.ObjectID) (*model.PekerjaanAlumni, error) {
+	collection := database.MongoDB.Collection("pekerjaan_alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	update := bson.M{
+		"$set": bson.M{
+			"is_delete":  "tidak",
+			"updated_at": time.Now(),
+		},
+	}
+
+	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
+	var pekerjaan model.PekerjaanAlumni
+	if err := collection.FindOneAndUpdate(ctx, bson.M{"_id": id, "is_delete": "hapus"}, update, opts).Decode(&pekerjaan); err != nil {
+		return nil, err
+	}
+	return &pekerjaan, nil
 }

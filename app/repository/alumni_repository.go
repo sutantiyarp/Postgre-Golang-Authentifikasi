@@ -1,194 +1,144 @@
 package repository
 
 import (
-	"hello-fiber/app/model"
-	"database/sql"
-	"log"
+	"context"
+	"errors"
 	"time"
-	"fmt"
+
+	"hello-fiber/app/model"
+	"hello-fiber/database"
+
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-type AlumniRepository interface {
-	GetAll() ([]model.Alumni, error)
-	GetByID(id int) (model.Alumni, error)
-	Create(alumni model.CreateAlumniRequest) (model.Alumni, error)
-	Update(id int, alumni model.UpdateAlumniRequest) (model.Alumni, error)
-	Delete(id int) error
+type AlumniRepositoryMongo struct{}
+
+func NewAlumniRepositoryMongo() *AlumniRepositoryMongo {
+	return &AlumniRepositoryMongo{}
 }
 
-type alumniRepository struct {
-	db *sql.DB
-}
+// CreateAlumni membuat alumni baru dan mengembalikan ID (hex string)
+func (r *AlumniRepositoryMongo) CreateAlumni(alumni model.Alumni) (string, error) {
+	collection := database.MongoDB.Collection("alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-func NewAlumniRepository(db *sql.DB) AlumniRepository {
-	return &alumniRepository{db: db}
-}
+	id := bson.NewObjectID()
+	doc := bson.M{
+		"_id":         id,
+		"nim":         alumni.NIM,
+		"nama":        alumni.Nama,
+		"jurusan":     alumni.Jurusan,
+		"angkatan":    alumni.Angkatan,
+		"tahun_lulus": alumni.TahunLulus,
+		"email":       alumni.Email,
+		"no_telepon":  alumni.NoTelepon,
+		"alamat":      alumni.Alamat,
+		"created_at":  time.Now(),
+		"updated_at":  time.Now(),
+	}
 
-func (r *alumniRepository) GetAll() ([]model.Alumni, error) {
-	sqlStatement := `
-		SELECT id, nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at 
-		FROM alumni 
-		ORDER BY created_at DESC`
-	
-	rows, err := r.db.Query(sqlStatement)
+	_, err := collection.InsertOne(ctx, doc)
 	if err != nil {
-		log.Println("Error querying alumni:", err)
+		return "", err
+	}
+
+	return id.Hex(), nil
+}
+
+// GetAllAlumni mengambil semua alumni
+func (r *AlumniRepositoryMongo) GetAllAlumni() ([]model.Alumni, error) {
+	collection := database.MongoDB.Collection("alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cursor, err := collection.Find(ctx, bson.M{})
+	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer cursor.Close(ctx)
 
-	var alumniList []model.Alumni
-	for rows.Next() {
-		var alumni model.Alumni
-		err := rows.Scan(
-			&alumni.ID, &alumni.NIM, &alumni.Nama, &alumni.Jurusan,
-			&alumni.Angkatan, &alumni.TahunLulus, &alumni.Email, &alumni.NoTelepon,
-			&alumni.Alamat, &alumni.CreatedAt, &alumni.UpdatedAt,
-		)
-		if err != nil {
-			log.Println("Error scanning alumni:", err)
-			return nil, err
-		}
-		alumniList = append(alumniList, alumni)
+	var alumni []model.Alumni
+	if err = cursor.All(ctx, &alumni); err != nil {
+		return nil, err
 	}
-	return alumniList, nil
-}
 
-func (r *alumniRepository) GetByID(id int) (model.Alumni, error) {
-	sqlStatement := `
-		SELECT id, nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at 
-		FROM alumni 
-		WHERE id = $1`
-	
-	var alumni model.Alumni
-	err := r.db.QueryRow(sqlStatement, id).Scan(
-		&alumni.ID, &alumni.NIM, &alumni.Nama, &alumni.Jurusan,
-		&alumni.Angkatan, &alumni.TahunLulus, &alumni.Email, &alumni.NoTelepon,
-		&alumni.Alamat, &alumni.CreatedAt, &alumni.UpdatedAt,
-	)
-	if err != nil {
-		log.Println("Error finding alumni by ID:", err)
-		return model.Alumni{}, err
-	}
 	return alumni, nil
 }
 
-func (r *alumniRepository) Create(req model.CreateAlumniRequest) (model.Alumni, error) {
-	sqlStatement := `
-		INSERT INTO alumni (nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
-		RETURNING id, created_at, updated_at`
-	
+// GetAlumniByID mengambil alumni berdasarkan ID (hex string)
+func (r *AlumniRepositoryMongo) GetAlumniByID(id string) (*model.Alumni, error) {
+	collection := database.MongoDB.Collection("alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	objectID, err := bson.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, errors.New("invalid ID format")
+	}
+
 	var alumni model.Alumni
-	now := time.Now()
-	err := r.db.QueryRow(
-		sqlStatement, req.NIM, req.Nama, req.Jurusan, req.Angkatan, 
-		req.TahunLulus, req.Email, req.NoTelepon, req.Alamat, now, now,
-	).Scan(&alumni.ID, &alumni.CreatedAt, &alumni.UpdatedAt)
-	
-	if err != nil {
-		log.Println("Error inserting alumni:", err)
-		return model.Alumni{}, err
+	if err := collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&alumni); err != nil {
+		return nil, err
 	}
 
-	alumni.NIM = req.NIM
-	alumni.Nama = req.Nama
-	alumni.Jurusan = req.Jurusan
-	alumni.Angkatan = req.Angkatan
-	alumni.TahunLulus = req.TahunLulus
-	alumni.Email = req.Email
-	alumni.NoTelepon = req.NoTelepon
-	alumni.Alamat = req.Alamat
-	
-	return alumni, nil
+	return &alumni, nil
 }
 
-func (r *alumniRepository) Update(id int, req model.UpdateAlumniRequest) (model.Alumni, error) {
-	sqlStatement := `
-		UPDATE alumni 
-		SET nama = $1, jurusan = $2, angkatan = $3, tahun_lulus = $4, email = $5, no_telepon = $6, alamat = $7, updated_at = $8 
-		WHERE id = $9`
-	
-	now := time.Now()
-	result, err := r.db.Exec(
-		sqlStatement, req.Nama, req.Jurusan, req.Angkatan, req.TahunLulus,
-		req.Email, req.NoTelepon, req.Alamat, now, id,
-	)
+// UpdateAlumni mengupdate data alumni berdasarkan ID (hex string)
+func (r *AlumniRepositoryMongo) UpdateAlumni(id string, alumni model.Alumni) error {
+	collection := database.MongoDB.Collection("alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		log.Println("Error updating alumni:", err)
-		return model.Alumni{}, err
-	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return model.Alumni{}, sql.ErrNoRows
+		return errors.New("invalid ID format")
 	}
 
-	return r.GetByID(id)
-}
+	update := bson.M{
+		"$set": bson.M{
+			"nim":         alumni.NIM,
+			"nama":        alumni.Nama,
+			"jurusan":     alumni.Jurusan,
+			"angkatan":    alumni.Angkatan,
+			"tahun_lulus": alumni.TahunLulus,
+			"email":       alumni.Email,
+			"no_telepon":  alumni.NoTelepon,
+			"alamat":      alumni.Alamat,
+			"updated_at":  time.Now(),
+		},
+	}
 
-func (r *alumniRepository) Delete(id int) error {
-	sqlStatement := `DELETE FROM alumni WHERE id = $1`
-	result, err := r.db.Exec(sqlStatement, id)
+	res, err := collection.UpdateOne(ctx, bson.M{"_id": objectID}, update)
 	if err != nil {
-		log.Println("Error deleting alumni:", err)
 		return err
 	}
-	
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		return sql.ErrNoRows
+	if res.MatchedCount == 0 {
+		return errors.New("alumni not found")
 	}
-	
+
 	return nil
 }
 
-func GetAlumniWithPagination(db *sql.DB, search, sortBy, order string, limit, offset int) ([]model.Alumni, error) {
-	validSortColumns := map[string]bool{
-		"id": true, "nim": true, "nama": true, "jurusan": true, 
-		"angkatan": true, "tahun_lulus": true, "email": true, "created_at": true,
-	}
-	if !validSortColumns[sortBy] {
-		sortBy = "id"
-	}
+// DeleteAlumni menghapus alumni berdasarkan ID (hex string)
+func (r *AlumniRepositoryMongo) DeleteAlumni(id string) error {
+	collection := database.MongoDB.Collection("alumni")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	query := fmt.Sprintf(`
-		SELECT id, nim, nama, jurusan, angkatan, tahun_lulus, email, no_telepon, alamat, created_at, updated_at
-		FROM alumni
-		WHERE nama ILIKE $1 OR nim ILIKE $1 OR jurusan ILIKE $1 OR email ILIKE $1
-		ORDER BY %s %s
-		LIMIT $2 OFFSET $3
-	`, sortBy, order)
-
-	rows, err := db.Query(query, "%"+search+"%", limit, offset)
+	objectID, err := bson.ObjectIDFromHex(id)
 	if err != nil {
-		log.Println("Query error:", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var alumni []model.Alumni
-	for rows.Next() {
-		var a model.Alumni
-		err := rows.Scan(
-			&a.ID, &a.NIM, &a.Nama, &a.Jurusan, &a.Angkatan, &a.TahunLulus,
-			&a.Email, &a.NoTelepon, &a.Alamat, &a.CreatedAt, &a.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		alumni = append(alumni, a)
+		return errors.New("invalid ID format")
 	}
 
-	return alumni, nil
-}
-
-func CountAlumni(db *sql.DB, search string) (int, error) {
-	var total int
-	countQuery := `SELECT COUNT(*) FROM alumni WHERE nama ILIKE $1 OR nim ILIKE $1 OR jurusan ILIKE $1 OR email ILIKE $1`
-	err := db.QueryRow(countQuery, "%"+search+"%").Scan(&total)
-	if err != nil && err != sql.ErrNoRows {
-		return 0, err
+	res, err := collection.DeleteOne(ctx, bson.M{"_id": objectID})
+	if err != nil {
+		return err
 	}
-	return total, nil
+	if res.DeletedCount == 0 {
+		return errors.New("alumni not found")
+	}
+
+	return nil
 }
