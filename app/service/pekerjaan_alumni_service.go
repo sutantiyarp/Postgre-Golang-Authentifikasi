@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"time"
 
 	"hello-fiber/app/model"
 	"hello-fiber/app/repository"
@@ -63,43 +62,20 @@ func GetPekerjaanAlumniByAlumniIDService(c *fiber.Ctx) error {
 
 // CreatePekerjaanAlumniService menambah pekerjaan alumni baru
 func CreatePekerjaanAlumniService(c *fiber.Ctx) error {
-	var req model.CreatePekerjaanAlumniRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
+    var req model.CreatePekerjaanAlumniRequest
+    if err := c.BodyParser(&req); err != nil {
+        return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
+    }
+
+    if err := validatePekerjaanInput(req); err != nil {
+        return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+    }
+
+	if req.StatusPekerjaan == "" {
+		req.StatusPekerjaan = "aktif"
 	}
 
-	// validasi minimal (sesuaikan dengan kebutuhan)
-	if err := validatePekerjaanInput(req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
-	}
-
-	// Convert AlumniID string to bson.ObjectID
-	alumniID, err := bson.ObjectIDFromHex(req.AlumniID)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "alumni_id format tidak valid"})
-	}
-
-	pekerjaan := model.PekerjaanAlumni{
-		AlumniID:            alumniID,
-		NamaPerusahaan:      req.NamaPerusahaan,
-		PosisiJabatan:       req.PosisiJabatan,
-		BidangIndustri:      req.BidangIndustri,
-		LokasiKerja:         req.LokasiKerja,
-		GajiRange:           req.GajiRange,
-		TanggalMulaiKerja:   req.TanggalMulaiKerja,
-		TanggalSelesaiKerja: req.TanggalSelesaiKerja,
-		StatusPekerjaan:     req.StatusPekerjaan,
-		DeskripsiPekerjaan:  req.DeskripsiPekerjaan,
-		IsDelete:            "tidak",
-		CreatedAt:           time.Now(),
-		UpdatedAt:           time.Now(),
-	}
-
-	if pekerjaan.StatusPekerjaan == "" {
-		pekerjaan.StatusPekerjaan = "aktif"
-	}
-
-	id, err := pekerjaanRepo.CreatePekerjaanAlumni(pekerjaan)
+	id, err := pekerjaanRepo.CreatePekerjaanAlumni(req)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal menambahkan pekerjaan alumni", "error": err.Error()})
 	}
@@ -108,28 +84,33 @@ func CreatePekerjaanAlumniService(c *fiber.Ctx) error {
 
 // UpdatePekerjaanAlumniService mengupdate pekerjaan alumni berdasarkan id
 func UpdatePekerjaanAlumniService(c *fiber.Ctx) error {
-	idStr := c.Params("id")
-	if idStr == "" {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
-	}
+    idStr := c.Params("id")
+    if idStr == "" {
+        return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
+    }
 
-	id, err := bson.ObjectIDFromHex(idStr)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID format tidak valid"})
-	}
+    id, err := bson.ObjectIDFromHex(idStr)
+    if err != nil {
+        return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID format tidak valid"})
+    }
 
-	var req model.PekerjaanAlumni
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
-	}
+    var req model.UpdatePekerjaanAlumniRequest
+    if err := c.BodyParser(&req); err != nil {
+        return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
+    }
 
-	req.UpdatedAt = time.Now()
-	err = pekerjaanRepo.UpdatePekerjaanAlumni(id, req)
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal mengupdate pekerjaan alumni", "error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"success": true, "message": "Pekerjaan alumni berhasil diupdate"})
+    if err := validatePekerjaanUpdateInput(req); err != nil {
+        return c.Status(400).JSON(fiber.Map{"success": false, "message": err.Error()})
+    }
+
+    err = pekerjaanRepo.UpdatePekerjaanAlumni(id, req)
+    if err != nil {
+        return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal mengupdate pekerjaan alumni", "error": err.Error()})
+    }
+
+    return c.JSON(fiber.Map{"success": true, "message": "Pekerjaan alumni berhasil diupdate"})
 }
+
 
 // SoftDeletePekerjaanAlumniService set is_delete pada dokumen (soft delete)
 func SoftDeletePekerjaanAlumniService(c *fiber.Ctx) error {
@@ -143,24 +124,27 @@ func SoftDeletePekerjaanAlumniService(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID format tidak valid"})
 	}
 
-	// body optional: {"is_delete":"hapus"} atau {"is_delete":"tidak"}
 	var body struct {
 		IsDelete string `json:"is_delete"`
 	}
+	
+	// Parse body, default to "hapus" (soft delete)
 	if err := c.BodyParser(&body); err != nil {
 		body.IsDelete = "hapus"
 	}
-	if body.IsDelete == "" {
-		body.IsDelete = "hapus"
+
+	if body.IsDelete != "hapus" && body.IsDelete != "tidak" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "is_delete harus bernilai 'hapus' atau 'tidak'"})
 	}
 
-	if err := pekerjaanRepo.SoftDeletePekerjaanAlumni(id, body.IsDelete); err != nil {
+	isDelete := body.IsDelete == "hapus"
+	if err := pekerjaanRepo.SoftDeletePekerjaanAlumni(id, isDelete); err != nil {
 		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal mengubah status is_delete", "error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"success": true, "message": "Status is_delete berhasil diupdate"})
 }
 
-// GetTrashedPekerjaanAlumniService mengambil semua yang is_delete == "hapus"
+// GetTrashedPekerjaanAlumniService mengambil semua yang is_delete == true
 func GetTrashedPekerjaanAlumniService(c *fiber.Ctx) error {
 	data, err := pekerjaanRepo.GetTrashedPekerjaanAlumni()
 	if err != nil {
@@ -207,57 +191,7 @@ func RestoreTrashedPekerjaanAlumniService(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"success": true, "message": "Berhasil merestore item", "data": item})
 }
 
-// UpdatePekerjaanAlumniAdmin
-func UpdatePekerjaanAlumniAdmin(c *fiber.Ctx) error {
-	idStr := c.Params("id")
-	if idStr == "" {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
-	}
-
-	id, err := bson.ObjectIDFromHex(idStr)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID format tidak valid"})
-	}
-
-	var req model.PekerjaanAlumni
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
-	}
-
-	req.UpdatedAt = time.Now()
-	err = pekerjaanRepo.UpdatePekerjaanAlumni(id, req)
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal mengupdate pekerjaan alumni", "error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"success": true, "message": "Pekerjaan alumni berhasil diupdate"})
-}
-
-// UpdatePekerjaanAlumniSementara
-func UpdatePekerjaanAlumniSementara(c *fiber.Ctx) error {
-	idStr := c.Params("id")
-	if idStr == "" {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
-	}
-
-	id, err := bson.ObjectIDFromHex(idStr)
-	if err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID format tidak valid"})
-	}
-
-	var req model.PekerjaanAlumni
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
-	}
-
-	req.UpdatedAt = time.Now()
-	err = pekerjaanRepo.UpdatePekerjaanAlumni(id, req)
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal mengupdate pekerjaan alumni", "error": err.Error()})
-	}
-	return c.JSON(fiber.Map{"success": true, "message": "Pekerjaan alumni berhasil diupdate"})
-}
-
-// DeletePekerjaanAlumniService
+// DeletePekerjaanAlumniService - wrapper for soft delete with is_delete = true
 func DeletePekerjaanAlumniService(c *fiber.Ctx) error {
 	idStr := c.Params("id")
 	if idStr == "" {
@@ -269,16 +203,15 @@ func DeletePekerjaanAlumniService(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID format tidak valid"})
 	}
 
-	if err := pekerjaanRepo.SoftDeletePekerjaanAlumni(id, "hapus"); err != nil {
+	if err := pekerjaanRepo.SoftDeletePekerjaanAlumni(id, true); err != nil {
 		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal menghapus pekerjaan alumni", "error": err.Error()})
 	}
 	return c.JSON(fiber.Map{"success": true, "message": "Pekerjaan alumni berhasil dihapus"})
 }
 
-// helper untuk validasi minimal (opsional)
 func validatePekerjaanInput(p model.CreatePekerjaanAlumniRequest) error {
-	if p.AlumniID == "" {
-		return errors.New("alumni_id wajib diisi")
+	if p.AlumniID == bson.NilObjectID {
+		return errors.New("alumni_id wajib diisi dan harus valid")
 	}
 	if p.NamaPerusahaan == "" {
 		return errors.New("nama_perusahaan wajib diisi")
@@ -289,9 +222,40 @@ func validatePekerjaanInput(p model.CreatePekerjaanAlumniRequest) error {
 	if p.LokasiKerja == "" {
 		return errors.New("lokasi_kerja wajib diisi")
 	}
-	// TanggalMulaiKerja bertipe time.Time
 	if p.TanggalMulaiKerja.IsZero() {
 		return errors.New("tanggal_mulai_kerja wajib diisi")
 	}
+	
+	if !p.TanggalSelesaiKerja.IsZero() && p.TanggalSelesaiKerja.Before(p.TanggalMulaiKerja.Time) {
+		return errors.New("tanggal_selesai_kerja tidak boleh lebih awal dari tanggal_mulai_kerja")
+	}
+	
 	return nil
+}
+
+// service/pekerjaan_alumni_service.go
+
+func validatePekerjaanUpdateInput(u model.UpdatePekerjaanAlumniRequest) error {
+    nothingToUpdate :=
+        u.AlumniID == nil &&
+        u.NamaPerusahaan == "" &&
+        u.PosisiJabatan == "" &&
+        u.BidangIndustri == "" &&
+        u.LokasiKerja == "" &&
+        u.GajiRange == "" &&
+        u.StatusPekerjaan == "" &&
+        u.DeskripsiPekerjaan == "" &&
+        u.TanggalMulaiKerja == nil &&
+        u.TanggalSelesaiKerja == nil
+
+    if nothingToUpdate {
+        return errors.New("tidak ada field yang diupdate")
+    }
+    
+    if u.TanggalMulaiKerja != nil && u.TanggalSelesaiKerja != nil &&
+        u.TanggalSelesaiKerja.Time.Before(u.TanggalMulaiKerja.Time) {
+        return errors.New("tanggal_selesai_kerja tidak boleh lebih awal dari tanggal_mulai_kerja")
+    }
+    
+    return nil
 }

@@ -1,102 +1,133 @@
-// ...existing code...
 package service
 
 import (
-    "errors"
-    "time"
+	"strconv"
+	"hello-fiber/app/model"
+	"hello-fiber/app/repository"
 
-    "hello-fiber/app/model"
-    "hello-fiber/app/repository"
-
-    "github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 var alumniRepo = repository.NewAlumniRepositoryMongo()
 
 // GetAllAlumniService mengambil semua alumni
 func GetAllAlumniService(c *fiber.Ctx) error {
-    alumni, err := alumniRepo.GetAllAlumni()
-    if err != nil {
-        return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal mengambil data alumni", "error": err.Error()})
-    }
-    return c.JSON(fiber.Map{"success": true, "message": "Berhasil mengambil data alumni", "data": alumni})
+	// Parse query params
+	pageStr := c.Query("page", "1")
+	limitStr := c.Query("limit", "10")
+
+	page, err := strconv.ParseInt(pageStr, 10, 64)
+	if err != nil || page < 1 {
+		page = 1
+	}
+
+	limit, err := strconv.ParseInt(limitStr, 10, 64)
+	if err != nil || limit < 1 {
+		limit = 10
+	}
+
+	alumni, total, err := alumniRepo.GetAllAlumniWithPagination(page, limit)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal mengambil data alumni", "error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"message": "Berhasil mengambil data alumni",
+		"data":    alumni,
+		"page":    page,
+		"limit":   limit,
+		"total":   total,
+	})
 }
 
-// GetAlumniByIDService mengambil alumni berdasarkan id (string)
+// GetAlumniByIDService mengambil alumni berdasarkan id (bson.ObjectID)
 func GetAlumniByIDService(c *fiber.Ctx) error {
-    id := c.Params("id")
-    if id == "" {
-        return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
-    }
+	idStr := c.Params("id")
+	if idStr == "" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
+	}
 
-    item, err := alumniRepo.GetAlumniByID(id)
-    if err != nil {
-        return c.Status(404).JSON(fiber.Map{"success": false, "message": "Alumni tidak ditemukan", "error": err.Error()})
-    }
-    return c.JSON(fiber.Map{"success": true, "message": "Berhasil mengambil data alumni", "data": item})
+	id, err := bson.ObjectIDFromHex(idStr)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Format ID tidak valid"})
+	}
+
+	item, err := alumniRepo.GetAlumniByID(id)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Alumni tidak ditemukan", "error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true, "message": "Berhasil mengambil data alumni", "data": item})
 }
 
 // CreateAlumniService menambah alumni baru
 func CreateAlumniService(c *fiber.Ctx) error {
-    var req model.Alumni
-    if err := c.BodyParser(&req); err != nil {
-        return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
-    }
+	var req model.CreateAlumniRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
+	}
 
-    // validasi minimal
-    if req.NIM == "" || req.Nama == "" || req.Jurusan == "" || req.Email == "" {
-        return c.Status(400).JSON(fiber.Map{"success": false, "message": "NIM, nama, jurusan, dan email harus diisi"})
-    }
+	// validasi minimal
+	if req.NIM == "" || req.Nama == "" || req.Jurusan == "" || req.Email == "" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "NIM, nama, jurusan, dan email harus diisi"})
+	}
 
-    // set waktu (repository juga bisa set, tapi aman untuk set di sini)
-    req.CreatedAt = time.Now()
-    req.UpdatedAt = time.Now()
-
-    id, err := alumniRepo.CreateAlumni(req)
-    if err != nil {
-        return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal menambahkan alumni", "error": err.Error()})
-    }
-    return c.Status(201).JSON(fiber.Map{"success": true, "message": "Alumni berhasil dibuat", "id": id})
+	id, err := alumniRepo.CreateAlumni(req)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal menambahkan alumni", "error": err.Error()})
+	}
+	return c.Status(201).JSON(fiber.Map{"success": true, "message": "Alumni berhasil dibuat", "id": id.Hex()})
 }
 
 // UpdateAlumniService mengupdate alumni berdasarkan id
 func UpdateAlumniService(c *fiber.Ctx) error {
-    id := c.Params("id")
-    if id == "" {
-        return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
-    }
+	idStr := c.Params("id")
+	if idStr == "" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
+	}
 
-    var req model.Alumni
-    if err := c.BodyParser(&req); err != nil {
-        return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
-    }
+	id, err := bson.ObjectIDFromHex(idStr)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Format ID tidak valid"})
+	}
 
-    // validasi minimal (sesuaikan kebutuhan)
-    if req.Nama == "" || req.Jurusan == "" || req.Email == "" {
-        return c.Status(400).JSON(fiber.Map{"success": false, "message": "Nama, jurusan, dan email harus diisi"})
-    }
+	var req model.UpdateAlumniRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Request body tidak valid", "error": err.Error()})
+	}
 
-    req.UpdatedAt = time.Now()
-    if err := alumniRepo.UpdateAlumni(id, req); err != nil {
-        return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal mengupdate alumni", "error": err.Error()})
-    }
-    return c.JSON(fiber.Map{"success": true, "message": "Alumni berhasil diupdate"})
+	hasUpdate := req.NIM != nil || req.Nama != nil || req.Jurusan != nil || req.Angkatan != nil || 
+		req.TahunLulus != nil || req.Email != nil || req.NoTelepon != nil || req.Alamat != nil
+	
+	if !hasUpdate {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Minimal ada satu field yang harus diupdate"})
+	}
+
+	if err := alumniRepo.UpdateAlumni(id, req); err != nil {
+		return c.Status(404).JSON(fiber.Map{"success": false, "message": "Gagal mengupdate alumni", "error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true, "message": "Alumni berhasil diupdate"})
 }
 
 // DeleteAlumniService menghapus alumni berdasarkan id
 func DeleteAlumniService(c *fiber.Ctx) error {
-    id := c.Params("id")
-    if id == "" {
-        return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
-    }
+	idStr := c.Params("id")
+	if idStr == "" {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "ID tidak boleh kosong"})
+	}
 
-    if err := alumniRepo.DeleteAlumni(id); err != nil {
-        // jika repository mengembalikan error khusus, kembalikan 404
-        if errors.Is(err, err) { // placeholder: repository mengembalikan error string biasa
-            return c.Status(404).JSON(fiber.Map{"success": false, "message": "Alumni tidak ditemukan", "error": err.Error()})
-        }
-        return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal menghapus alumni", "error": err.Error()})
-    }
-    return c.JSON(fiber.Map{"success": true, "message": "Alumni berhasil dihapus"})
+	id, err := bson.ObjectIDFromHex(idStr)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"success": false, "message": "Format ID tidak valid"})
+	}
+
+	if err := alumniRepo.DeleteAlumni(id); err != nil {
+		// Check if it's a "not found" error
+		if err.Error() == "alumni not found" {
+			return c.Status(404).JSON(fiber.Map{"success": false, "message": "Alumni tidak ditemukan", "error": err.Error()})
+		}
+		return c.Status(500).JSON(fiber.Map{"success": false, "message": "Gagal menghapus alumni", "error": err.Error()})
+	}
+	return c.JSON(fiber.Map{"success": true, "message": "Alumni berhasil dihapus"})
 }
-// ...existing code...

@@ -39,10 +39,14 @@ func NewApp() *fiber.App {
 	_ = mongoClient // Simpan reference jika diperlukan
 
 	// Initialize the Fiber application
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		BodyLimit: 2 * 1024 * 1024, // Set body limit to 2MB for file uploads
+	})
 
 	// Middleware
 	app.Use(middleware.LoggerMiddleware)
+
+	app.Static("/file", "./uploads")
 
 	// Set up routes, passing db as a dependency to the route handler
 	route.SetupRoutes(app, nil) // Pass nil untuk db karena sudah global di database.MongoDB

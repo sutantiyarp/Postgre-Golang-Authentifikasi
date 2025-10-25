@@ -1,6 +1,7 @@
 package route
 
 import (
+	"hello-fiber/app/repository"
 	"hello-fiber/app/service"
 	"github.com/gofiber/fiber/v2"
 	"hello-fiber/middleware"
@@ -9,7 +10,6 @@ import (
 func SetupRoutes(app *fiber.App, db interface{}) {
 	api := app.Group("/api")
 
-	// Route untuk registrasi dan login
 	api.Post("/register", func(c *fiber.Ctx) error {
 		return service.Register(c)
 	})
@@ -20,6 +20,20 @@ func SetupRoutes(app *fiber.App, db interface{}) {
 
 	protected := api.Group("/", middleware.JWTMiddleware())
 
+	users := protected.Group("/users")
+	users.Get("/", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.GetAllUsersService(c)
+	})
+	users.Post("/", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.CreateUserAdmin(c)
+	})
+	users.Put("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.UpdateUserService(c)
+	})
+	users.Delete("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.DeleteUserService(c)
+	})
+
 	alumni := protected.Group("/alumni")
 	alumni.Get("/", func(c *fiber.Ctx) error {
 		return service.GetAllAlumniService(c)
@@ -27,7 +41,6 @@ func SetupRoutes(app *fiber.App, db interface{}) {
 	alumni.Get("/:id", func(c *fiber.Ctx) error {
 		return service.GetAlumniByIDService(c)
 	})
-	
 	alumni.Post("/", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
 		return service.CreateAlumniService(c)
 	})
@@ -39,6 +52,8 @@ func SetupRoutes(app *fiber.App, db interface{}) {
 	})
 
 	pekerjaan := protected.Group("/pekerjaan")
+	
+	// Get routes
 	pekerjaan.Get("/", func(c *fiber.Ctx) error {
 		return service.GetAllPekerjaanAlumniService(c)
 	})
@@ -51,26 +66,47 @@ func SetupRoutes(app *fiber.App, db interface{}) {
 	pekerjaan.Get("/:id", func(c *fiber.Ctx) error {
 		return service.GetPekerjaanAlumniByIDService(c)
 	})
+	
+	// Create route
+	pekerjaan.Post("/", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.CreatePekerjaanAlumniService(c)
+	})
+	
+	// Update routes
+	pekerjaan.Put("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.UpdatePekerjaanAlumniService(c)
+	})
+	
+	// Delete routes (soft delete)
+	pekerjaan.Delete("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
+		return service.DeletePekerjaanAlumniService(c)
+	})
+	
+	// Trash management routes
 	pekerjaan.Delete("/trash/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
 		return service.HardDeleteTrashedPekerjaanAlumniService(c)
 	})
 	pekerjaan.Put("/trash/:id/restore", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
 		return service.RestoreTrashedPekerjaanAlumniService(c)
 	})
-	
-	pekerjaan.Post("/", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
-		return service.CreatePekerjaanAlumniService(c)
+
+	fileUploadRepo := repository.NewFileUploadRepository()
+	fileUploadService := service.NewFileUploadService(fileUploadRepo, "./uploads")
+
+	files := protected.Group("/files")
+	files.Get("/", func(c *fiber.Ctx) error {
+		return fileUploadService.GetAllFiles(c)
 	})
-	pekerjaan.Put("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
-		return service.UpdatePekerjaanAlumniService(c)
+	files.Get("/:id", func(c *fiber.Ctx) error {
+		return fileUploadService.GetFileByID(c)
 	})
-	pekerjaan.Put("/admin/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
-		return service.UpdatePekerjaanAlumniAdmin(c)
+	files.Post("/foto", func(c *fiber.Ctx) error {
+		return fileUploadService.UploadFoto(c)
 	})
-	pekerjaan.Put("/users/:id", middleware.PekerjaanOwnerMiddlewareMongo(), func(c *fiber.Ctx) error {
-		return service.UpdatePekerjaanAlumniSementara(c)
+	files.Post("/sertifikat", func(c *fiber.Ctx) error {
+		return fileUploadService.UploadSertifikat(c)
 	})
-	pekerjaan.Delete("/:id", middleware.AdminOnlyMiddleware(), func(c *fiber.Ctx) error {
-		return service.DeletePekerjaanAlumniService(c)
+	files.Delete("/:id", func(c *fiber.Ctx) error {
+		return fileUploadService.DeleteFile(c)
 	})
 }
